@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Smoke Shop Mini App</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --bg-color: var(--tg-theme-bg-color, #181818);
+            --text-color: var(--tg-theme-text-color, #ffffff);
+            --hint-color: var(--tg-theme-hint-color, #aaaaaa);
+            --button-color: var(--tg-theme-button-color, #2ea6ff);
+            --button-text-color: var(--tg-theme-button-text-color, #ffffff);
+            --secondary-bg: var(--tg-theme-secondary-bg-color, #242424);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 16px;
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        h2 {
+            margin-top: 0;
+            font-size: 20px;
+        }
+
+        .category-title {
+            font-size: 14px;
+            text-transform: uppercase;
+            color: var(--hint-color);
+            margin: 16px 0 8px 0;
+            letter-spacing: 0.5px;
+        }
+
+        .products-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 12px;
+        }
+
+        .card {
+            background-color: var(--secondary-bg);
+            border-radius: 12px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+
+        .card-title {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .card-desc {
+            font-size: 12px;
+            color: var(--hint-color);
+            margin-bottom: 8px;
+        }
+
+        .card-price {
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: var(--button-color);
+        }
+
+        .btn {
+            background-color: var(--button-color);
+            color: var(--button-text-color);
+            border: none;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+        }
+
+        .btn:active {
+            opacity: 0.8;
+        }
+
+        .cart-summary {
+            position: fixed;
+            bottom: 16px;
+            left: 16px;
+            right: 16px;
+            background-color: var(--button-color);
+            color: var(--button-text-color);
+            padding: 14px 20px;
+            border-radius: 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            cursor: pointer;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>🛍️ Каталог товаров</h2>
+    <div id="catalog"></div>
+
+    <div id="cart-bar" class="cart-summary" onclick="checkout()">
+        <span id="cart-count">0 товаров</span>
+        <span id="cart-total">0 ₽</span>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+
+        // РЕДАКТИРУЙТЕ ТОВАРЫ И КАТЕГОРИИ ЗДЕСЬ
+        const productsData = [
+            {
+                category: "💨 Электронные сигареты",
+                items: [
+                    { id: "v1", name: "HQD Cuvie Plus", price: 800, desc: "1200 затяжек, Мята" },
+                    { id: "v2", name: "Elf Bar 5000", price: 1200, desc: "5000 затяжек, Арбуз" }
+                ]
+            },
+            {
+                category: "🧪 Жидкости",
+                items: [
+                    { id: "l1", name: "Husky Salt 30ml", price: 450, desc: "20mg, Сибирский кофе" },
+                    { id: "l2", name: "Maska Salt 30ml", price: 500, desc: "20mg, Мятный баблгам" }
+                ]
+            }
+        ];
+
+        let cart = {};
+
+        function renderCatalog() {
+            const container = document.getElementById("catalog");
+            container.innerHTML = "";
+
+            productsData.forEach(cat => {
+                const catTitle = document.createElement("div");
+                catTitle.className = "category-title";
+                catTitle.innerText = cat.category;
+                container.appendChild(catTitle);
+
+                const grid = document.createElement("div");
+                grid.className = "products-grid";
+
+                cat.items.forEach(item => {
+                    const card = document.createElement("div");
+                    card.className = "card";
+                    card.innerHTML = `
+                        <div>
+                            <div class="card-title">${item.name}</div>
+                            <div class="card-desc">${item.desc}</div>
+                        </div>
+                        <div>
+                            <div class="card-price">${item.price} ₽</div>
+                            <button class="btn" onclick="addToCart('${item.id}', '${item.name}', ${item.price})">В корзину</button>
+                        </div>
+                    `;
+                    grid.appendChild(card);
+                });
+
+                container.appendChild(grid);
+            });
+        }
+
+        function addToCart(id, name, price) {
+            if (cart[id]) {
+                cart[id].count += 1;
+            } else {
+                cart[id] = { id, name, price, count: 1 };
+            }
+            updateCartBar();
+            if (tg.HapticFeedback) {
+                tg.HapticFeedback.impactOccurred('light');
+            }
+        }
+
+        function updateCartBar() {
+            const cartBar = document.getElementById("cart-bar");
+            let totalCount = 0;
+            let totalPrice = 0;
+
+            Object.values(cart).forEach(item => {
+                totalCount += item.count;
+                totalPrice += item.price * item.count;
+            });
+
+            if (totalCount > 0) {
+                cartBar.style.display = "flex";
+                document.getElementById("cart-count").innerText = `${totalCount} тов.`;
+                document.getElementById("cart-total").innerText = `Заказать (${totalPrice} ₽)`;
+            } else {
+                cartBar.style.display = "none";
+            }
+        }
+
+        function checkout() {
+            if (Object.keys(cart).length === 0) return;
+            tg.sendData(JSON.stringify({ action: "checkout", items: cart }));
+            tg.close();
+        }
+
+        renderCatalog();
+    </script>
+</body>
+</html>
